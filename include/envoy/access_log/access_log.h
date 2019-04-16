@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <regex>
 
 #include "envoy/common/pure.h"
 #include "envoy/http/header_map.h"
@@ -139,5 +140,19 @@ public:
 
 using FormatterProviderPtr = std::unique_ptr<FormatterProvider>;
 
+  /**
+   * See file.proto for the definition
+   */
+class AccessLogMask {
+public:
+  AccessLogMask(const std::string& name,
+	       const std::string& regex,
+	       const std::string& replacer);
+  
+  std::string name_;
+  std::regex regex_;
+  std::string replace_with_;
+};
+  
 } // namespace AccessLog
 } // namespace Envoy

@@ -1,6 +1,9 @@
 #include "extensions/access_loggers/file/file_access_log_impl.h"
 
 #include "common/http/header_map_impl.h"
+#include "common/common/utility.h"
+
+#include<vector>
 
 namespace Envoy {
 namespace Extensions {
@@ -9,9 +12,11 @@ namespace File {
 
 FileAccessLog::FileAccessLog(const std::string& access_log_path, AccessLog::FilterPtr&& filter,
                              AccessLog::FormatterPtr&& formatter,
-                             AccessLog::AccessLogManager& log_manager)
+                             AccessLog::AccessLogManager& log_manager,
+                             const std::vector<AccessLog::AccessLogMask>& log_line_masks)
     : filter_(std::move(filter)), formatter_(std::move(formatter)) {
   log_file_ = log_manager.createAccessLog(access_log_path);
+  log_line_masks_ = log_line_masks;
 }
 
 void FileAccessLog::log(const Http::HeaderMap* request_headers,
@@ -35,8 +40,13 @@ void FileAccessLog::log(const Http::HeaderMap* request_headers,
     }
   }
 
-  log_file_->write(
-      formatter_->format(*request_headers, *response_headers, *response_trailers, stream_info));
+  std::string log_line = formatter_->format(*request_headers, *response_headers, *response_trailers, stream_info);
+
+  for(AccessLog::AccessLogMask mask : log_line_masks_) {
+    log_line = std::regex_replace(log_line, mask.regex_, mask.replace_with_);
+  }
+  
+  log_file_->write(log_line);
 }
 
 } // namespace File

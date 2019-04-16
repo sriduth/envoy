@@ -6,9 +6,16 @@
 #include "common/common/fmt.h"
 #include "common/common/lock_guard.h"
 #include "common/common/stack_array.h"
+#include "common/common/utility.h"
 
 namespace Envoy {
 namespace AccessLog {
+
+
+AccessLogMask::AccessLogMask(const std::string& name,
+			     const std::string& regex,
+			     const std::string& replacer)
+  : name_(name), regex_(RegexUtil::parseRegex(regex)), replace_with_(replacer) {}
 
 void AccessLogManagerImpl::reopen() {
   for (auto& access_log : access_logs_) {

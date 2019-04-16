@@ -2,7 +2,7 @@
 
 #include <memory>
 #include <unordered_map>
-
+#include <vector>
 #include "envoy/config/accesslog/v2/file.pb.validate.h"
 #include "envoy/registry/registry.h"
 #include "envoy/server/filter_config.h"
@@ -44,8 +44,18 @@ FileAccessLogFactory::createAccessLogInstance(const Protobuf::Message& config,
         "Invalid access_log format provided. Only 'format' and 'json_format' are supported.");
   }
 
+  auto masks = fal_config.masks();
+
+  std::vector<AccessLog::AccessLogMask> parsed_masks;
+
+  for(int i=0;i<masks.size();i++) {
+    auto access_log_mask = AccessLog::AccessLogMask(masks[i].name(), masks[i].regex(),
+						    masks[i].mask_with());
+    parsed_masks.push_back(access_log_mask);
+  }
+  
   return std::make_shared<FileAccessLog>(fal_config.path(), std::move(filter), std::move(formatter),
-                                         context.accessLogManager());
+                                         context.accessLogManager(), parsed_masks);
 }
 
 ProtobufTypes::MessagePtr FileAccessLogFactory::createEmptyConfigProto() {

@@ -32,6 +32,7 @@ envoy_cc_library(
         "//include/envoy/api:api_interface",
         "//source/common/buffer:buffer_lib",
         "//source/common/common:thread_lib",
+	"//source/common/http:utility_lib"
     ],
 )
 
