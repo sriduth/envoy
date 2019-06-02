@@ -120,7 +120,8 @@ EXTENSIONS = {
 
     # Retry host predicates
     "envoy.retry_host_predicates.previous_hosts":          "//source/extensions/retry/host/previous_hosts:config",
-
+    "juspay.retry_host_predicates.canary_host_omitting":            "//source/extensions/retry/host/canary_host_omitting:config",
+    
     # Retry priorities
     "envoy.retry_priorities.previous_priorities":       "//source/extensions/retry/priority/previous_priorities:config",
 }
