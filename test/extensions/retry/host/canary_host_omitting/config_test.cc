@@ -35,12 +35,9 @@ TEST(CanaryHostOmittingRetryPredicateTest, PredicateTest) {
 
   
   ON_CALL(*host2, address()).WillByDefault(Return(host2_address));
-
-  ASSERT_FALSE(predicate->shouldSelectAnotherHost(*host1));
-  ASSERT_FALSE(predicate->shouldSelectAnotherHost(*host2));
-
-  host2_address.canary(true)
-
+  ON_CALL(*host2, canary()).WillByDefault(Return(true));
+  
+ 
   ASSERT_FALSE(predicate->shouldSelectAnotherHost(*host1));
   ASSERT_TRUE(predicate->shouldSelectAnotherHost(*host2));
 }
