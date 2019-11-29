@@ -47,7 +47,38 @@ envoy_cc_library(
         "//source/common/config:metadata_lib",
         "//source/common/http:utility_lib",
         "//source/common/stream_info:utility_lib",
-    ],
+        "//source/common/access_log:access_log_driver_lib",
+        "//source/common/access_log:access_log_parser_lib",
+        "//source/common/access_log:access_log_scanner_lib",
+    ]
+)
+
+envoy_cc_library(
+    name = "access_log_driver_lib",
+    srcs = ["driver.cc"],
+    hdrs = ["driver.h"],
+    deps = [
+    	"//source/common/access_log:access_log_scanner_lib",
+        "//source/common/access_log:access_log_parser_lib"
+    ]
+)
+
+envoy_cc_library(
+    name = "access_log_parser_lib",
+    srcs = ["parser.cc"],
+    hdrs = ["parser.hh", "driver.h", "access_log_formatter.h", "location.hh"],
+    deps = [
+        "//include/envoy/access_log:access_log_interface"
+    ]
+)
+
+envoy_cc_library(
+    name = "access_log_scanner_lib",
+    srcs = ["scanner.cc"],
+    hdrs = ["driver.h", "parser.hh", "access_log_formatter.h", "location.hh"],
+    deps = [
+        "//include/envoy/access_log:access_log_interface"
+    ]
 )
 
 envoy_cc_library(

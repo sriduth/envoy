@@ -1,4 +1,5 @@
 #include "common/access_log/access_log_formatter.h"
+#include "common/access_log/driver.h"
 
 #include <cstdint>
 #include <regex>
@@ -24,10 +25,10 @@ static const std::string UnspecifiedValueString = "-";
 
 namespace {
 
-// Matches newline pattern in a StartTimeFormatter format string.
 const std::regex& getStartTimeNewlinePattern() {
   CONSTRUCT_ON_FIRST_USE(std::regex, "%[-_0^#]*[1-9]*n");
 }
+
 const std::regex& getNewlinePattern() { CONSTRUCT_ON_FIRST_USE(std::regex, "\n"); }
 
 // Helper that handles the case when the ConnectionInfo is missing or if the desired value is
@@ -226,103 +227,91 @@ void AccessLogFormatParser::parseCommand(const std::string& token, const size_t 
 
 // TODO(derekargueta): #2967 - Rewrite AccessLogFormatter with parser library & formal grammar
 std::vector<FormatterProviderPtr> AccessLogFormatParser::parse(const std::string& format) {
-  std::string current_token;
   std::vector<FormatterProviderPtr> formatters;
-  static constexpr absl::string_view DYNAMIC_META_TOKEN{"DYNAMIC_METADATA("};
-  static constexpr absl::string_view FILTER_STATE_TOKEN{"FILTER_STATE("};
-  const std::regex command_w_args_regex(R"EOF(%([A-Z]|_)+(\([^\)]*\))?(:[0-9]+)?(%))EOF");
+  
+  auto replace_cb = [&formatters](const std::string function,
+				  const std::string key,
+				  absl::optional<std::string> alternate_,
+				  absl::optional<std::string> size) -> void
+		    {
+		      absl::optional<size_t> max_length = absl::nullopt;
+		      
+		      std::string alternate = "";
+		      if(alternate_ != absl::nullopt) {
+			alternate = alternate_.value();
+		      }
+		      
+		      if(size != absl::nullopt) {
+			uint64_t length_value;
+			std::string length_str = size.value();
+			if (!absl::SimpleAtoi(length_str, &length_value)) {
+			  throw EnvoyException(fmt::format("Length must be an integer, given: {}",
+							   length_str));
+			}
 
-  for (size_t pos = 0; pos < format.length(); ++pos) {
-    if (format[pos] == '%') {
-      if (!current_token.empty()) {
-        formatters.emplace_back(FormatterProviderPtr{new PlainStringFormatter(current_token)});
-        current_token = "";
-      }
+			max_length = length_value;
+		      }
+		      
+		      if(function == "REQ"){
+			formatters.emplace_back(FormatterProviderPtr{
+			    new RequestHeaderFormatter(key, alternate, max_length)});
+		      } else if(function == "RESP") {
+			formatters.emplace_back(FormatterProviderPtr{
+			    new ResponseHeaderFormatter(key, alternate, max_length)});
+		      } else if(function == "TRAILER"){
+			formatters.emplace_back(FormatterProviderPtr{
+			    new ResponseTrailerFormatter(key, alternate, max_length)});    
+		      } else if(function == "DYNAMIC_METADATA") {
+			std::vector<std::string> key_parts = absl::StrSplit(key, ":");
+			std::string ns = key_parts[0];
+		        std::vector<std::string> path(key_parts.begin() + 1, key_parts.end());
+			
+			formatters.emplace_back(FormatterProviderPtr{
+			    new DynamicMetadataFormatter(ns, path, max_length)});
+		      } else if(function == "FILTER_STATE") {
+			formatters.emplace_back(std::make_unique<FilterStateFormatter>
+						(key, max_length));			
+		      } else if(function == "START_TIME") {
+			if (std::regex_search(key, getStartTimeNewlinePattern())) {
+			  throw EnvoyException("Invalid header configuration. Format string contains newline.");
+			}
+			formatters.emplace_back(FormatterProviderPtr{
+			    new StartTimeFormatter(key) });
+		      } else {
+			std::cerr << "Stream infor frm" << function << key;
+			formatters.emplace_back(FormatterProviderPtr{
+			    new StreamInfoFormatter(function)});	
+		      }
+		    };
 
-      std::smatch m;
-      std::string search_space = format.substr(pos);
-      if (!(std::regex_search(search_space, m, command_w_args_regex) || m.position() == 0)) {
-        throw EnvoyException(
-            fmt::format("Incorrect configuration: {}. Couldn't find valid command at position {}",
-                        format, pos));
-      }
-
-      const std::string match = m.str(0);
-      const std::string token = match.substr(1, match.length() - 2);
-      pos += 1;
-      int command_end_position = pos + token.length();
-
-      if (absl::StartsWith(token, "REQ(")) {
-        std::string main_header, alternative_header;
-        absl::optional<size_t> max_length;
-
-        parseCommandHeader(token, ReqParamStart, main_header, alternative_header, max_length);
-
-        formatters.emplace_back(FormatterProviderPtr{
-            new RequestHeaderFormatter(main_header, alternative_header, max_length)});
-      } else if (absl::StartsWith(token, "RESP(")) {
-        std::string main_header, alternative_header;
-        absl::optional<size_t> max_length;
-
-        parseCommandHeader(token, RespParamStart, main_header, alternative_header, max_length);
-
-        formatters.emplace_back(FormatterProviderPtr{
-            new ResponseHeaderFormatter(main_header, alternative_header, max_length)});
-      } else if (absl::StartsWith(token, "TRAILER(")) {
-        std::string main_header, alternative_header;
-        absl::optional<size_t> max_length;
-
-        parseCommandHeader(token, TrailParamStart, main_header, alternative_header, max_length);
-
-        formatters.emplace_back(FormatterProviderPtr{
-            new ResponseTrailerFormatter(main_header, alternative_header, max_length)});
-      } else if (absl::StartsWith(token, DYNAMIC_META_TOKEN)) {
-        std::string filter_namespace;
-        absl::optional<size_t> max_length;
-        std::vector<std::string> path;
-        const size_t start = DYNAMIC_META_TOKEN.size();
-
-        parseCommand(token, start, ":", filter_namespace, path, max_length);
-        formatters.emplace_back(
-            FormatterProviderPtr{new DynamicMetadataFormatter(filter_namespace, path, max_length)});
-      } else if (absl::StartsWith(token, FILTER_STATE_TOKEN)) {
-        std::string key;
-        absl::optional<size_t> max_length;
-        std::vector<std::string> path;
-        const size_t start = FILTER_STATE_TOKEN.size();
-
-        parseCommand(token, start, "", key, path, max_length);
-        if (key.empty()) {
-          throw EnvoyException("Invalid filter state configuration, key cannot be empty.");
-        }
-
-        formatters.push_back(std::make_unique<FilterStateFormatter>(key, max_length));
-      } else if (absl::StartsWith(token, "START_TIME")) {
-        const size_t parameters_length = pos + StartTimeParamStart + 1;
-        const size_t parameters_end = command_end_position - parameters_length;
-
-        const std::string args = token[StartTimeParamStart - 1] == '('
-                                     ? token.substr(StartTimeParamStart, parameters_end)
-                                     : "";
-        // Validate the input specifier here. The formatted string may be destined for a header, and
-        // should not contain invalid characters {NUL, LR, CF}.
-        if (std::regex_search(args, getStartTimeNewlinePattern())) {
-          throw EnvoyException("Invalid header configuration. Format string contains newline.");
-        }
-        formatters.emplace_back(FormatterProviderPtr{new StartTimeFormatter(args)});
-      } else {
-        formatters.emplace_back(FormatterProviderPtr{new StreamInfoFormatter(token)});
-      }
-      pos = command_end_position;
-    } else {
-      current_token += format[pos];
-    }
+  auto plain_text_cb = [&formatters](const std::string plain_string) -> void {
+			 formatters.emplace_back(FormatterProviderPtr{
+			    new PlainStringFormatter(plain_string)});	
+		       };
+  
+  auto simple_cb = [&formatters](const std::string replace) -> void {
+		     if(replace == "START_TIME") {
+		       formatters.emplace_back(FormatterProviderPtr{
+			    new StartTimeFormatter("") });
+		     } else {
+		       std::cerr << "Stream infor 222" << replace ;
+		       formatters.emplace_back(FormatterProviderPtr{
+			   new StreamInfoFormatter(replace)});
+		     } 
+		   };
+  
+  Envoy::AccessLog::Driver driver;
+  driver.trace_scanning = false;
+  driver.trace_parsing = false;
+  driver.replace_expr_cb = replace_cb;
+  driver.simple_expr_cb = simple_cb;
+  driver.plain_text_cb = plain_text_cb;
+  int res = driver.parse(format);
+  
+  if(res != 0) {
+    throw EnvoyException(fmt::format("Parsing failed with error : {}", res));
   }
-
-  if (!current_token.empty()) {
-    formatters.emplace_back(FormatterProviderPtr{new PlainStringFormatter(current_token)});
-  }
-
+  
   return formatters;
 }
 
