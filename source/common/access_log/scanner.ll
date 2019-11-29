@@ -21,7 +21,6 @@ b2      [\)]
 id      [a-zA-Z\.][a-zA-Z_0-9\-\.]*
 sel     [a-zA-Z_0-9\-\.:\%[:blank:]\/\|]+
 number  [0-9]+
-size    [0-9]+
 space   [[:space:]]+
 
 %{
@@ -36,7 +35,7 @@ space   [[:space:]]+
   loc.step ();
 %}
 <*>{space}    { loc.lines(yyleng); loc.step(); drv.plain_text_cb(yytext); }
-<*>{size}   return yy::parser::make_SIZE(yytext, loc);
+<*>{number}   return yy::parser::make_SIZE(yytext, loc);
 {col}       return yy::parser::make_COL(yytext, loc);
 <INITIAL>{cmd}      return yy::parser::make_CMD(yytext, loc);
 <*>{b1}       { BEGIN(SEL); return yy::parser::make_LBR(yytext, loc); }
@@ -48,15 +47,13 @@ space   [[:space:]]+
 <<EOF>>    return yy::parser::make_END (loc);
 %%
 
-void
-Envoy::AccessLog::Driver::scan_begin (std::string log_format)
+void Envoy::AccessLog::Driver::scan_begin (std::string log_format)
 {
-  yy_flex_debug = false || true;
+  yy_flex_debug = trace_scanning;
   yy_scan_string(log_format.c_str());
 }
 
-void
-Envoy::AccessLog::Driver::scan_end ()
+void Envoy::AccessLog::Driver::scan_end ()
 {
   yylex_destroy();
 }

@@ -68,7 +68,8 @@ envoy_cc_library(
     srcs = ["parser.cc"],
     hdrs = ["parser.hh", "driver.h", "access_log_formatter.h", "location.hh"],
     deps = [
-        "//include/envoy/access_log:access_log_interface"
+        "//include/envoy/access_log:access_log_interface",
+	"//source/common/common:minimal_logger_lib"
     ]
 )
 

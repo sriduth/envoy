@@ -9,7 +9,8 @@
 %code requires {
 #include <string>
 #include "absl/types/optional.h"
-
+ 
+// Forward declare the Driver class
 namespace Envoy {
 namespace AccessLog {
 class Driver;
@@ -28,6 +29,7 @@ class Driver;
 
 %code {
 #include "common/access_log/driver.h"
+#include "common/common/logger.h"
 }
 
 %define api.token.prefix {TOK_}
@@ -68,8 +70,9 @@ lookup_expr:
 
 %%
 
-void
-yy::parser::error (const location_type& l, const std::string& m)
+using namespace Envoy;
+
+void yy::parser::error (const location_type& l, const std::string& m)
 {
-  std::cerr << l << ": " << m << '\n';
+  ENVOY_LOG_MISC(error, "{} {}", l, m);
 }
