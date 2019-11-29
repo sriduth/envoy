@@ -30,21 +30,21 @@ space   [[:space:]]+
 %%
 %{
   // A handy shortcut to the location held by the driver.
-  yy::location& loc = drv.location;
+  Envoy::AccessLog::location& loc = drv.location;
   // Code run each time yylex is called.
   loc.step ();
 %}
 <*>{space}    { loc.lines(yyleng); loc.step(); drv.plain_text_cb(yytext); }
-<*>{number}   return yy::parser::make_SIZE(yytext, loc);
-{col}       return yy::parser::make_COL(yytext, loc);
-<INITIAL>{cmd}      return yy::parser::make_CMD(yytext, loc);
-<*>{b1}       { BEGIN(SEL); return yy::parser::make_LBR(yytext, loc); }
-<*>{b2}       { BEGIN(INITIAL); return yy::parser::make_RBR(yytext, loc); }
-<*>{alt}      return yy::parser::make_ALT (yytext, loc);
-<SEL>{sel}    return yy::parser::make_SELECTOR (yytext, loc);
-<*>{id}       return yy::parser::make_TEXT (yytext, loc);
-.          return yy::parser::make_TEXT (yytext, loc);
-<<EOF>>    return yy::parser::make_END (loc);
+<*>{number}   return Envoy::AccessLog::Parser::make_SIZE(yytext, loc);
+{col}       return Envoy::AccessLog::Parser::make_COL(yytext, loc);
+<INITIAL>{cmd}      return Envoy::AccessLog::Parser::make_CMD(yytext, loc);
+<*>{b1}       { BEGIN(SEL); return Envoy::AccessLog::Parser::make_LBR(yytext, loc); }
+<*>{b2}       { BEGIN(INITIAL); return Envoy::AccessLog::Parser::make_RBR(yytext, loc); }
+<*>{alt}      return Envoy::AccessLog::Parser::make_ALT (yytext, loc);
+<SEL>{sel}    return Envoy::AccessLog::Parser::make_SELECTOR (yytext, loc);
+<*>{id}       return Envoy::AccessLog::Parser::make_TEXT (yytext, loc);
+.          return Envoy::AccessLog::Parser::make_TEXT (yytext, loc);
+<<EOF>>    return Envoy::AccessLog::Parser::make_END (loc);
 %%
 
 void Envoy::AccessLog::Driver::scan_begin (std::string log_format)

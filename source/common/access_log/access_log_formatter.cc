@@ -29,8 +29,6 @@ const std::regex& getStartTimeNewlinePattern() {
   CONSTRUCT_ON_FIRST_USE(std::regex, "%[-_0^#]*[1-9]*n");
 }
 
-const std::regex& getNewlinePattern() { CONSTRUCT_ON_FIRST_USE(std::regex, "\n"); }
-
 // Helper that handles the case when the ConnectionInfo is missing or if the desired value is
 // empty.
 StreamInfoFormatter::FieldExtractor sslConnectionInfoStringExtractor(
@@ -157,78 +155,11 @@ std::unordered_map<std::string, std::string> JsonFormatterImpl::toMap(
   return output;
 }
 
-void AccessLogFormatParser::parseCommandHeader(const std::string& token, const size_t start,
-                                               std::string& main_header,
-                                               std::string& alternative_header,
-                                               absl::optional<size_t>& max_length) {
-  std::vector<std::string> subs;
-  parseCommand(token, start, "?", main_header, subs, max_length);
-  if (subs.size() > 1) {
-    throw EnvoyException(
-        // Header format rules support only one alternative header.
-        // docs/root/configuration/access_log.rst#format-rules
-        fmt::format("More than 1 alternative header specified in token: {}", token));
-  }
-  if (subs.size() == 1) {
-    alternative_header = subs.front();
-  } else {
-    alternative_header = "";
-  }
-  // The main and alternative header should not contain invalid characters {NUL, LR, CF}.
-  if (std::regex_search(main_header, getNewlinePattern()) ||
-      std::regex_search(alternative_header, getNewlinePattern())) {
-    throw EnvoyException("Invalid header configuration. Format string contains newline.");
-  }
-}
-
-void AccessLogFormatParser::parseCommand(const std::string& token, const size_t start,
-                                         const std::string& separator, std::string& main,
-                                         std::vector<std::string>& sub_items,
-                                         absl::optional<size_t>& max_length) {
-  // TODO(dnoe): Convert this to use string_view throughout.
-  size_t end_request = token.find(')', start);
-  sub_items.clear();
-  if (end_request != token.length() - 1) {
-    // Closing bracket is not found.
-    if (end_request == std::string::npos) {
-      throw EnvoyException(fmt::format("Closing bracket is missing in token: {}", token));
-    }
-
-    // Closing bracket should be either last one or followed by ':' to denote limitation.
-    if (token[end_request + 1] != ':') {
-      throw EnvoyException(fmt::format("Incorrect position of ')' in token: {}", token));
-    }
-
-    const auto length_str = absl::string_view(token).substr(end_request + 2);
-    uint64_t length_value;
-
-    if (!absl::SimpleAtoi(length_str, &length_value)) {
-      throw EnvoyException(fmt::format("Length must be an integer, given: {}", length_str));
-    }
-
-    max_length = length_value;
-  }
-
-  const std::string name_data = token.substr(start, end_request - start);
-  if (!separator.empty()) {
-    const std::vector<std::string> keys = absl::StrSplit(name_data, separator);
-    if (!keys.empty()) {
-      // The main value is the first key
-      main = keys.at(0);
-      if (keys.size() > 1) {
-        // Sub items contain additional keys
-        sub_items.insert(sub_items.end(), keys.begin() + 1, keys.end());
-      }
-    }
-  } else {
-    main = name_data;
-  }
-}
 
 // TODO(derekargueta): #2967 - Rewrite AccessLogFormatter with parser library & formal grammar
 std::vector<FormatterProviderPtr> AccessLogFormatParser::parse(const std::string& format) {
   std::vector<FormatterProviderPtr> formatters;
-  
+  Envoy::AccessLog::Driver driver;
   auto replace_cb = [&formatters](const std::string function,
 				  const std::string key,
 				  absl::optional<std::string> alternate_,
@@ -237,6 +168,7 @@ std::vector<FormatterProviderPtr> AccessLogFormatParser::parse(const std::string
 		      absl::optional<size_t> max_length = absl::nullopt;
 		      
 		      std::string alternate = "";
+		      
 		      if(alternate_ != absl::nullopt) {
 			alternate = alternate_.value();
 		      }
@@ -251,7 +183,7 @@ std::vector<FormatterProviderPtr> AccessLogFormatParser::parse(const std::string
 
 			max_length = length_value;
 		      }
-		      
+
 		      if(function == "REQ"){
 			formatters.emplace_back(FormatterProviderPtr{
 			    new RequestHeaderFormatter(key, alternate, max_length)});
@@ -264,7 +196,7 @@ std::vector<FormatterProviderPtr> AccessLogFormatParser::parse(const std::string
 		      } else if(function == "DYNAMIC_METADATA") {
 			std::vector<std::string> key_parts = absl::StrSplit(key, ":");
 			std::string ns = key_parts[0];
-		        std::vector<std::string> path(key_parts.begin() + 1, key_parts.end());
+			std::vector<std::string> path(key_parts.begin() + 1, key_parts.end());
 			
 			formatters.emplace_back(FormatterProviderPtr{
 			    new DynamicMetadataFormatter(ns, path, max_length)});
@@ -278,12 +210,11 @@ std::vector<FormatterProviderPtr> AccessLogFormatParser::parse(const std::string
 			formatters.emplace_back(FormatterProviderPtr{
 			    new StartTimeFormatter(key) });
 		      } else {
-			std::cerr << "Stream infor frm" << function << key;
 			formatters.emplace_back(FormatterProviderPtr{
 			    new StreamInfoFormatter(function)});	
 		      }
 		    };
-
+  
   auto plain_text_cb = [&formatters](const std::string plain_string) -> void {
 			 formatters.emplace_back(FormatterProviderPtr{
 			    new PlainStringFormatter(plain_string)});	
@@ -292,24 +223,27 @@ std::vector<FormatterProviderPtr> AccessLogFormatParser::parse(const std::string
   auto simple_cb = [&formatters](const std::string replace) -> void {
 		     if(replace == "START_TIME") {
 		       formatters.emplace_back(FormatterProviderPtr{
-			    new StartTimeFormatter("") });
+			   new StartTimeFormatter("") });
 		     } else {
-		       std::cerr << "Stream infor 222" << replace ;
 		       formatters.emplace_back(FormatterProviderPtr{
 			   new StreamInfoFormatter(replace)});
-		     } 
+		     }
 		   };
   
-  Envoy::AccessLog::Driver driver;
-  driver.trace_scanning = false;
-  driver.trace_parsing = false;
+  driver.trace_scanning = true;
+  driver.trace_parsing = true;
   driver.replace_expr_cb = replace_cb;
   driver.simple_expr_cb = simple_cb;
   driver.plain_text_cb = plain_text_cb;
-  int res = driver.parse(format);
+
+  try {
+    driver.parse(format);
+  } catch (std::exception const &ex) {
+    driver.result = -1;
+  }
   
-  if(res != 0) {
-    throw EnvoyException(fmt::format("Parsing failed with error : {}", res));
+  if(driver.result != 0) {
+    throw EnvoyException(fmt::format("Parsing failed with error : {}", driver.result));
   }
   
   return formatters;

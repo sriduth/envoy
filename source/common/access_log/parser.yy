@@ -2,6 +2,8 @@
 %require "3.4"
 %defines
 
+%define api.namespace { Envoy::AccessLog }
+%define api.parser.class { Parser }
 %define api.token.constructor
 %define api.value.type variant
 %define parse.assert
@@ -9,14 +11,16 @@
 %code requires {
 #include <string>
 #include "absl/types/optional.h"
- 
+#include "common/common/logger.h"
+
 // Forward declare the Driver class
 namespace Envoy {
 namespace AccessLog {
 class Driver;
 }
 }
- 
+
+using namespace Envoy;
 }
 
 // The parsing context.
@@ -30,6 +34,8 @@ class Driver;
 %code {
 #include "common/access_log/driver.h"
 #include "common/common/logger.h"
+
+using namespace Envoy;
 }
 
 %define api.token.prefix {TOK_}
@@ -72,7 +78,7 @@ lookup_expr:
 
 using namespace Envoy;
 
-void yy::parser::error (const location_type& l, const std::string& m)
+void Envoy::AccessLog::Parser::error(const location_type& l, const std::string& m)
 {
-  ENVOY_LOG_MISC(error, "{} {}", l, m);
+  ENVOY_LOG_MISC(error, "parser error : {} - {}", l, m);
 }

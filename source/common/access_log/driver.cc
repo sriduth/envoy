@@ -3,12 +3,22 @@
 #include "common/access_log/parser.hh"
 
 
-int Envoy::AccessLog::Driver::parse(const std::string f)
+int Envoy::AccessLog::Driver::parse(const std::string format_string)
 {
-  scan_begin(f);
-  yy::parser parse (*this);
-  parse.set_debug_level(trace_parsing);
-  int res = parse();
-  scan_end ();
-  return res;
+  try {
+    scan_begin(format_string);
+    Envoy::AccessLog::Parser parse (*this);
+    parse.set_debug_level(trace_parsing);
+    result = -1;
+    result = parse();
+  } catch (std::exception const & ex) {
+    result = -1;
+  }
+
+  return result;
+}
+
+
+Envoy::AccessLog::Driver::~Driver() {
+  scan_end();
 }

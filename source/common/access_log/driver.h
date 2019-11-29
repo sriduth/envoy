@@ -9,7 +9,7 @@
 #include "common/access_log/parser.hh"
 
 # define YY_DECL \
-  yy::parser::symbol_type yylex(Envoy::AccessLog::Driver& drv)
+  Envoy::AccessLog::Parser::symbol_type yylex(Envoy::AccessLog::Driver& drv)
 
 namespace Envoy {
 namespace AccessLog {
@@ -19,7 +19,7 @@ class Driver
 public:
   Driver() {};
 
-  ~Driver() {};
+  ~Driver();
   
   int result;
 
@@ -44,7 +44,7 @@ public:
   // Whether to generate scanner debug traces.
   bool trace_scanning = false;
   // The token's location used by the scanner.
-  yy::location location;
+  Envoy::AccessLog::location location;
 
   void lookup_item_cb(const std::string function,
 		      const std::string main_key,
@@ -57,7 +57,7 @@ public:
 } // namespace Envoy
 // ... and declare it for the parser's sake.
 
-yy::parser::symbol_type yylex(Envoy::AccessLog::Driver& drv);
+Envoy::AccessLog::Parser::symbol_type yylex(Envoy::AccessLog::Driver& drv);
 
 #endif // ! DRIVER_HH
 
