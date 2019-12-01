@@ -48,8 +48,8 @@ using namespace Envoy;
 %token <std::string> RBR ")"
 %token <std::string> COL ":"
 %token <std::string> ALT        "?";
-%token <std::string> TEXT       "text"
-%token <std::string> SELECTOR   "textcol"
+%token <std::string> TEXT       "command_op"
+%token <std::string> SELECTOR   "arg"
 %token <std::string> SIZE       "size"
 
 %printer { yyo << $$; } <*>;
@@ -63,16 +63,16 @@ log_format:
 %empty                 {}
 |	log_format lookup_expr  { }
 |       log_format simple_expr  { }
-|       log_format "text" { drv.plain_text_cb($2); };
+|       log_format "command_op" { drv.plain_text_cb($2); };
 
 simple_expr:
-"%" "text" "%" { drv.simple_expr_cb($2); };
+"%" "command_op" "%" { drv.simple_expr_cb($2); };
 
 lookup_expr:
- "%" "text" "(" "textcol" "?" "textcol" ")" ":" "size" "%" {  drv.replace_expr_cb($2, $4, $6, $9); };
-| "%" "text" "(" "textcol" ")" ":" "size" "%" { drv.replace_expr_cb($2, $4, absl::nullopt, $7); };
-| "%" "text" "(" "textcol" "?" "textcol" ")" "%" {  drv.replace_expr_cb($2, $4, $6, absl::nullopt); };
-| "%" "text" "(" "textcol" ")" "%" {  drv.replace_expr_cb($2, $4, absl::nullopt, absl::nullopt) ;};
+ "%" "command_op" "(" "arg" "?" "arg" ")" ":" "size" "%" {  drv.replace_expr_cb($2, $4, $6, $9); };
+| "%" "command_op" "(" "arg" ")" ":" "size" "%" { drv.replace_expr_cb($2, $4, absl::nullopt, $7); };
+| "%" "command_op" "(" "arg" "?" "arg" ")" "%" {  drv.replace_expr_cb($2, $4, $6, absl::nullopt); };
+| "%" "command_op" "(" "arg" ")" "%" {  drv.replace_expr_cb($2, $4, absl::nullopt, absl::nullopt) ;};
 
 %%
 
