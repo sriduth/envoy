@@ -1,5 +1,4 @@
 #include "common/access_log/access_log_formatter.h"
-#include "common/access_log/driver.h"
 
 #include <cstdint>
 #include <regex>
@@ -12,6 +11,11 @@
 #include "common/config/metadata.h"
 #include "common/http/utility.h"
 #include "common/stream_info/utility.h"
+
+#include "source/common/access_log/access_log_grammar.inc/access_log_grammar/AccessLogLexer.h"
+#include "source/common/access_log/access_log_grammar.inc/access_log_grammar/AccessLogParser.h"
+#include "common/access_log/driver.h"
+#include "antlr4-runtime.h"
 
 #include "absl/strings/str_split.h"
 #include "fmt/format.h"
@@ -157,93 +161,106 @@ std::unordered_map<std::string, std::string> JsonFormatterImpl::toMap(
 
 
 // TODO(derekargueta): #2967 - Rewrite AccessLogFormatter with parser library & formal grammar
-std::vector<FormatterProviderPtr> AccessLogFormatParser::parse(const std::string& format) {
+std::vector<FormatterProviderPtr> AccessLogFormatParser::parse(const std::string& log_fmt) {
   std::vector<FormatterProviderPtr> formatters;
-  Envoy::AccessLog::Driver driver;
+
   auto replace_cb = [&formatters](const std::string function,
-				  const std::string key,
-				  absl::optional<std::string> alternate_,
-				  absl::optional<std::string> size) -> void
-		    {
-		      absl::optional<size_t> max_length = absl::nullopt;
+  				  const std::string key,
+  				  absl::optional<std::string> alternate_,
+  				  absl::optional<std::string> size) -> void
+  		    {
+  		      absl::optional<size_t> max_length = absl::nullopt;
 		      
-		      std::string alternate = "";
+  		      std::string alternate = "";
 		      
-		      if(alternate_ != absl::nullopt) {
-			alternate = alternate_.value();
-		      }
+  		      if(alternate_ != absl::nullopt) {
+  			alternate = alternate_.value();
+  		      }
 		      
-		      if(size != absl::nullopt) {
-			uint64_t length_value;
-			std::string length_str = size.value();
-			if (!absl::SimpleAtoi(length_str, &length_value)) {
-			  throw EnvoyException(fmt::format("Length must be an integer, given: {}",
-							   length_str));
-			}
+  		      if(size != absl::nullopt) {
+  			uint64_t length_value;
+  			std::string length_str = size.value();
+  			if (!absl::SimpleAtoi(length_str, &length_value)) {
+  			  throw EnvoyException(fmt::format("Length must be an integer, given: {}",
+  							   length_str));
+  			}
 
-			max_length = length_value;
-		      }
+  			max_length = length_value;
+  		      }
 
-		      if(function == "REQ"){
-			formatters.emplace_back(FormatterProviderPtr{
-			    new RequestHeaderFormatter(key, alternate, max_length)});
-		      } else if(function == "RESP") {
-			formatters.emplace_back(FormatterProviderPtr{
-			    new ResponseHeaderFormatter(key, alternate, max_length)});
-		      } else if(function == "TRAILER"){
-			formatters.emplace_back(FormatterProviderPtr{
-			    new ResponseTrailerFormatter(key, alternate, max_length)});    
-		      } else if(function == "DYNAMIC_METADATA") {
-			std::vector<std::string> key_parts = absl::StrSplit(key, ":");
-			std::string ns = key_parts[0];
-			std::vector<std::string> path(key_parts.begin() + 1, key_parts.end());
+  		      if(function == "REQ"){
+  			formatters.emplace_back(FormatterProviderPtr{
+  			    new RequestHeaderFormatter(key, alternate, max_length)});
+  		      } else if(function == "RESP") {
+  			formatters.emplace_back(FormatterProviderPtr{
+  			    new ResponseHeaderFormatter(key, alternate, max_length)});
+  		      } else if(function == "TRAILER"){
+  			formatters.emplace_back(FormatterProviderPtr{
+  			    new ResponseTrailerFormatter(key, alternate, max_length)});    
+  		      } else if(function == "DYNAMIC_METADATA") {
+  			std::vector<std::string> key_parts = absl::StrSplit(key, ":");
+  			std::string ns = key_parts[0];
+  			std::vector<std::string> path(key_parts.begin() + 1, key_parts.end());
 			
-			formatters.emplace_back(FormatterProviderPtr{
-			    new DynamicMetadataFormatter(ns, path, max_length)});
-		      } else if(function == "FILTER_STATE") {
-			formatters.emplace_back(std::make_unique<FilterStateFormatter>
-						(key, max_length));			
-		      } else if(function == "START_TIME") {
-			if (std::regex_search(key, getStartTimeNewlinePattern())) {
-			  throw EnvoyException("Invalid header configuration. Format string contains newline.");
-			}
-			formatters.emplace_back(FormatterProviderPtr{
-			    new StartTimeFormatter(key) });
-		      } else {
-			formatters.emplace_back(FormatterProviderPtr{
-			    new StreamInfoFormatter(function)});	
-		      }
-		    };
+  			formatters.emplace_back(FormatterProviderPtr{
+  			    new DynamicMetadataFormatter(ns, path, max_length)});
+  		      } else if(function == "FILTER_STATE") {
+  			formatters.emplace_back(std::make_unique<FilterStateFormatter>
+  						(key, max_length));			
+  		      } else if(function == "START_TIME") {
+  			if (std::regex_search(key, getStartTimeNewlinePattern())) {
+  			  throw EnvoyException("Invalid header configuration. Format string contains newline.");
+  			}
+  			formatters.emplace_back(FormatterProviderPtr{
+  			    new StartTimeFormatter(key) });
+  		      } else {
+  			formatters.emplace_back(FormatterProviderPtr{
+  			    new StreamInfoFormatter(function)});	
+  		      }
+  		    };
   
   auto plain_text_cb = [&formatters](const std::string plain_string) -> void {
-			 formatters.emplace_back(FormatterProviderPtr{
-			    new PlainStringFormatter(plain_string)});	
-		       };
+  			 formatters.emplace_back(FormatterProviderPtr{
+  			    new PlainStringFormatter(plain_string)});	
+  		       };
   
   auto simple_cb = [&formatters](const std::string replace) -> void {
-		     if(replace == "START_TIME") {
-		       formatters.emplace_back(FormatterProviderPtr{
-			   new StartTimeFormatter("") });
-		     } else {
-		       formatters.emplace_back(FormatterProviderPtr{
-			   new StreamInfoFormatter(replace)});
-		     }
-		   };
-  
-  driver.trace_scanning = true;
-  driver.trace_parsing = true;
-  driver.replace_expr_cb = replace_cb;
-  driver.simple_expr_cb = simple_cb;
-  driver.plain_text_cb = plain_text_cb;
+  		     if(replace == "START_TIME") {
+  		       formatters.emplace_back(FormatterProviderPtr{
+  			   new StartTimeFormatter("") });
+  		     } else {
+  		       formatters.emplace_back(FormatterProviderPtr{
+  			   new StreamInfoFormatter(replace)});
+  		     }
+  		   };
 
-  try {
-    driver.parse(format);
-  } catch (std::exception const &ex) {
-    driver.result = -1;
+  antlr4::ANTLRInputStream input(log_fmt);
+  ::access_log_grammar::AccessLogLexer lexer(&input);
+
+  antlr4::CommonTokenStream tokens(&lexer);
+
+  ::access_log_grammar::AccessLogParser parser(&tokens);
+
+  Driver d;
+  d.simple_expr_cb = simple_cb;
+  d.plain_text_cb = plain_text_cb;
+  d.replace_expr_cb = replace_cb;
+
+  parser.addErrorListener(&d);
+
+  antlr4::tree::ParseTree *tree = parser.start();
+
+  try
+  {
+    antlr4::tree::ParseTreeWalker::DEFAULT.walk(&d, tree);
   }
-  
-  if(driver.result != 0) {
-    throw EnvoyException(fmt::format("Parsing failed with error : {}", driver.result));
+  catch(const std::exception&)
+  {
+      d.parse_success = false;
+  }
+
+  if(!d.parse_success) {
+    throw EnvoyException(d.error_message.value_or("Could not parse"));
   }
   
   return formatters;

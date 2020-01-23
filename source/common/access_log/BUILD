@@ -6,6 +6,8 @@ load(
     "envoy_package",
 )
 
+load("//bazel:antlr.bzl", "antlr_cc_library")
+
 envoy_package()
 
 envoy_cc_library(
@@ -35,11 +37,19 @@ envoy_cc_library(
     ],
 )
 
+antlr_cc_library(
+    name = "access_log",
+    srcs = ["AccessLogLexer.g4", "AccessLogParser.g4"]
+)
+
+
 envoy_cc_library(
     name = "access_log_formatter_lib",
     srcs = ["access_log_formatter.cc"],
     hdrs = ["access_log_formatter.h"],
     deps = [
+        ":access_log_cc_parser",
+        "@antlr4_runtimes//:cpp",
         "//include/envoy/access_log:access_log_interface",
         "//include/envoy/stream_info:stream_info_interface",
         "//source/common/common:assert_lib",
@@ -47,9 +57,7 @@ envoy_cc_library(
         "//source/common/config:metadata_lib",
         "//source/common/http:utility_lib",
         "//source/common/stream_info:utility_lib",
-        "//source/common/access_log:access_log_driver_lib",
-        "//source/common/access_log:access_log_parser_lib",
-        "//source/common/access_log:access_log_scanner_lib",
+        "//source/common/access_log:access_log_driver_lib"
     ]
 )
 
@@ -58,27 +66,8 @@ envoy_cc_library(
     srcs = ["driver.cc"],
     hdrs = ["driver.h"],
     deps = [
-    	"//source/common/access_log:access_log_scanner_lib",
-        "//source/common/access_log:access_log_parser_lib"
-    ]
-)
-
-envoy_cc_library(
-    name = "access_log_parser_lib",
-    srcs = ["parser.cc"],
-    hdrs = ["parser.hh", "driver.h", "access_log_formatter.h", "location.hh"],
-    deps = [
-        "//include/envoy/access_log:access_log_interface",
-	"//source/common/common:minimal_logger_lib"
-    ]
-)
-
-envoy_cc_library(
-    name = "access_log_scanner_lib",
-    srcs = ["scanner.cc"],
-    hdrs = ["driver.h", "parser.hh", "access_log_formatter.h", "location.hh"],
-    deps = [
-        "//include/envoy/access_log:access_log_interface"
+        ":access_log_cc_parser",
+        "@antlr4_runtimes//:cpp"
     ]
 )
 

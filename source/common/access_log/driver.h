@@ -1,63 +1,40 @@
-#ifndef DRIVER_HH
-# define DRIVER_HH
-
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_split.h"
 #include "absl/types/optional.h"
-#include "common/access_log/location.hh"
-#include "common/access_log/parser.hh"
-
-# define YY_DECL \
-  Envoy::AccessLog::Parser::symbol_type yylex(Envoy::AccessLog::Driver& drv)
+#include "./source/common/access_log/access_log_grammar.inc/access_log_grammar/AccessLogParserBaseListener.h"
+#include "ANTLRErrorListener.h"
 
 namespace Envoy {
 namespace AccessLog {
 
-class Driver
-{
+class Driver : public ::access_log_grammar::AccessLogParserBaseListener,
+	       public antlr4::BaseErrorListener {
+
 public:
-  Driver() {};
-
-  ~Driver();
+  bool parse_success = true;
+  absl::optional<std::string> error_message = absl::nullopt;
   
-  int result;
-
   std::function<void(const std::string)> simple_expr_cb;
 
   std::function<void(const std::string)> plain_text_cb;
-  
+
   std::function<void(const std::string,
 		     const std::string,
 		     absl::optional<std::string>,
 		     absl::optional<std::string>)> replace_expr_cb;
+
+
+  void enterStart(access_log_grammar::AccessLogParser::StartContext* ctx);
+
+  void enterSimple_expr(access_log_grammar::AccessLogParser::Simple_exprContext* ctx);
   
-  
-  int parse (const std::string log_format);
+  void enterLookup_expr(access_log_grammar::AccessLogParser::Lookup_exprContext* ctx);
 
-  // Whether to generate parser debug traces.
-  bool trace_parsing = false;
-
-  void scan_begin (std::string log_format);
-  void scan_end();
-
-  // Whether to generate scanner debug traces.
-  bool trace_scanning = false;
-  // The token's location used by the scanner.
-  Envoy::AccessLog::location location;
-
-  void lookup_item_cb(const std::string function,
-		      const std::string main_key,
-		      const absl::optional<std::string> alt_key = absl::nullopt,
-		      const absl::optional<std::string> length = absl::nullopt);
+  void syntaxError(antlr4::Recognizer* r, antlr4::Token* t, size_t, size_t,
+		   const std::string& m, std::exception_ptr) override;
 };
-  
-} // namespace AccessLog
-
-} // namespace Envoy
-// ... and declare it for the parser's sake.
-
-Envoy::AccessLog::Parser::symbol_type yylex(Envoy::AccessLog::Driver& drv);
-
-#endif // ! DRIVER_HH
-
+    
+}
+}
