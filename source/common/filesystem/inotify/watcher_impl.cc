@@ -25,8 +25,16 @@ WatcherImpl::WatcherImpl(Event::Dispatcher& dispatcher, Api::Api& api)
             onInotifyEvent();
           },
           Event::FileTriggerType::Edge, Event::FileReadyType::Read)) {
-  RELEASE_ASSERT(inotify_fd_ >= 0,
-                 "Consider increasing value of user.max_inotify_watches via sysctl");
+
+  if(inotify_fd_ == -1) {
+    if (errno == EMFILE) {
+      RELEASE_ASSERT(inotify_fd_ >= 0,
+		     "could not initialize inotify, consider increasing user.max_inotify_instances via sysctl");
+    }
+
+    RELEASE_ASSERT(inotify_fd_ >= 0,
+		   errorDetails(errno));
+  }
 }
 
 WatcherImpl::~WatcherImpl() { close(inotify_fd_); }
